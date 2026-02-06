@@ -814,6 +814,7 @@
   var canvas = document.getElementById('goban')
   var ctx = canvas.getContext('2d')
   var game = new Game(9, 0, 0.5)
+  var previousGame
 
   function resetGameFromSettings() {
       const handicap = parseInt(document.getElementById('handicap').value)
@@ -832,7 +833,13 @@
     // })
     document.getElementById('undo').addEventListener('click', () => {
         if (game.state === GAME_PLAYING) {
-            game.goBackward()
+            // Special rule for accidenally undoing a new game.
+            if (game.history.length === 0 && game.future.length === 0 && previousGame) {
+                game = previousGame
+                previousGame = undefined
+            } else {
+                game.goBackward()
+            }
         } else {
             game.state = GAME_PLAYING
         }
@@ -854,6 +861,9 @@
     // })
 
   document.getElementById('newgame').addEventListener('click', () => {
+      if (game.history.length !== 0 || game.future.length !== 0) {
+          previousGame = game
+      }
       resetGameFromSettings()
       drawGoban(canvas, ctx, game)
   })
