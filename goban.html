@@ -1,0 +1,882 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html, body {
+            margin: 0;
+            background: #666;
+        }
+        .container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        .area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+            max-width: min(100vw,100vh);
+            max-height: min(100vw,100vh);
+            background-color: #f0f0f0;
+            position: relative;
+        }
+
+        .status {
+            display: flex;
+            background-color: #e0e0e0;
+            width: 100%;
+        }
+
+        .point_to_black {
+            width: 10px;
+            height: 10px;
+            /* border-top: 0.5em solid transparent; */
+            /* border-right: 1em solid #FFF; */
+            /* border-bottom: 0.5em solid transparent; */
+            border-top: 25px solid transparent;
+            border-right: 30px solid #999;
+            border-left: 30px solid #999;
+            border-bottom: 25px solid transparent;
+
+            background: #0FF
+        }
+
+        .white_to_play {
+            background-color: #FFF;
+            color: #000;
+        }
+        .black_to_play {
+            background-color: #000;
+            color: #FFF;
+        }
+
+        .jigo {
+            background-color: #666;
+            color: #FFF;
+        }
+
+        #goban {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+
+    </style>
+  </head>
+<body>
+<div class="container">
+<div class="area">
+  <div class="status">
+    <div style="flex-grow: 1; background-color: black; color: white; padding-left: 1em">B  &mdash; Cap: <span id="black_prisoners">0</span></div>
+    <div id="turn_indicator">&larr;</div>
+    <div style="flex-grow: 1; background-color: white; color: black; text-align:right;  padding-right: 1em">W &mdash; Cap: <span id="white_prisoners">0</span></div>
+  </div>
+<canvas id="goban"></canvas>
+<!-- <div> -->
+<!--   <button id="beginning">&lt;&lt;</button> -->
+<!--   <button id="back">&lt;</button> -->
+<!--   <button id="forward">&gt;</button> -->
+<!--   <button id="end">&gt;&gt;</button> -->
+<!-- </div> -->
+<div>
+  <button id="undo">Undo</button>
+  <button id="pass">Pass</button>
+  <select id="size">
+    <option value="19">19x19</option>
+    <option value="13">13x13</option>
+    <option value="9" selected>9x9</option>
+  </select>
+  <select id="handicap">
+    <option value="0" selected>H0</option>
+    <option value="1">H1</option>
+    <option value="2">H2</option>
+    <option value="3">H3</option>
+    <option value="4">H4</option>
+    <option value="5">H5</option>
+    <option value="6">H6</option>
+    <option value="7">H7</option>
+    <option value="8">H8</option>
+    <option value="9">H9</option>
+  </select>
+  <button id="newgame">New Game</button>
+</div>
+</div>
+</div>
+
+<script>
+  const EMPTY = 0
+  const BLACK = 1
+  const WHITE = 2
+  const KO = 3
+
+  const UNCERTAIN = 0
+  const ALIVE = 1
+  const DEAD = 2
+
+  const GAME_PLAYING = 0
+  const GAME_SCORING = 1
+  const GAME_BLACK_RESIGNED = 2
+  const GAME_WHITE_RESIGNED = 3
+
+  class Board {
+      constructor(size, handicap) {
+          this.size = size
+          this.board = new Array(this.size * this.size).fill(EMPTY)
+          this.placeHandicapStones(handicap)
+          this.captures = {}
+          this.captures[BLACK] = 0
+          this.captures[WHITE] = 0
+          this.lastMove = null
+      }
+
+      placeHandicapStones(handicap) {
+          let positions
+          const half = Math.floor(this.size/2)
+          const four = this.size-4
+          const three = this.size-3
+          if (this.size >= 19) {
+              positions = [
+                  [3,3],
+                  [four,four],
+                  [3,four],
+                  [four,3],
+                  [3,half],
+                  [four,half],
+                  [half,3],
+                  [half,four],
+                  [half,half],
+              ]
+          } else if (this.size >= 13) {
+              positions = [
+                  [3,3],
+                  [3,four],
+                  [four,four],
+                  [four,3],
+                  [3,half],
+                  [four,half],
+                  [half,3],
+
+                  [half,four],
+                  [half,half],
+              ]
+          } else if (this.size >= 9) {
+              positions = [
+                  [2,2],
+                  [three,three],
+                  [2,three],
+                  [three,2],
+                  [half,half],
+                  [2,half],
+                  [three,half],
+                  [half,2],
+                  [half,three],
+              ]
+          } else {
+              positions = []
+          }
+
+          const num = Math.min(handicap,positions.length)
+          for (let i=0; i<num; i++) {
+              const [x,y] = positions[i]
+              this.setPieceAt(x,y, BLACK)
+          }
+      }
+
+      copy() {
+          let b = new Board(this.size, this.handicap)
+          for (let i=0; i<b.board.length; i++) b.board[i] = this.board[i]
+          b.captures[BLACK] = this.captures[BLACK]
+          b.captures[WHITE] = this.captures[WHITE]
+          this.lastMove = structuredClone(b.lastMove)
+          return b
+      }
+
+      idx(x, y) {
+          return y * this.size + x
+      }
+
+      pieceAt(x, y) {
+          if (x < 0 || x >= this.size) return
+          if (y < 0 || y >= this.size) return
+          return this.board[this.idx(x, y)]
+      }
+
+      setPieceAt(x, y, piece) {
+          if (x < 0 || x >= this.size) return false
+          if (y < 0 || y >= this.size) return false
+          this.board[this.idx(x,y)] = piece
+      }
+
+      // Count the liberties of the group located at x,y. If piece is
+      // specified then act as though that piece was at that location.
+      countLiberties(startX, startY) {
+          let liberties = 0
+          let group = []
+          let seen = []
+          let toCheck = []
+          let maybeAddIntersection = (x,y) => {
+              // console.log(JSON.stringify(seen))
+              // console.log('add', x, y)
+              if (x < 0 || x >= this.size) return
+              if (y < 0 || y >= this.size) return
+              if (seen.some(([x2,y2]) => {
+                  // console.log('check', x, y, x2, y2)
+                  return x2 === x && y2 === y
+              })) return
+              toCheck.push([x,y])
+              seen.push([x,y])
+          }
+          const originPiece = this.pieceAt(startX, startY)
+          if (originPiece === undefined || originPiece === EMPTY || originPiece === KO) {
+              return {ok:false}
+          }
+          // Seed with the start location.
+          maybeAddIntersection(startX,startY)
+          while (toCheck.length > 0) {
+              const [x, y] = toCheck.pop()
+              const piece = this.board[this.idx(x,y)]
+              if (piece === EMPTY || piece === KO) {
+                  // console.log('liberty at', x, y)
+                  liberties += 1
+              } else if (piece === originPiece) {
+                  // It's part of the group.
+                  group.push([x,y])
+                  maybeAddIntersection(x,y-1)
+                  maybeAddIntersection(x,y+1)
+                  maybeAddIntersection(x-1,y)
+                  maybeAddIntersection(x+1,y)
+              } else {
+                  // Opponent piece in not a liberty so ignore.
+              }
+          }
+
+          console.log('counted', liberties)
+          return {ok: true, liberties: liberties, color: originPiece, group: group}
+      }
+
+      // Return the coordinates of each
+      collectGroup(startX, startY) {
+          let group = []
+          let seen = []
+          let toCheck = []
+          let maybeAddIntersection = (x,y) => {
+              if (x < 0 || x >= this.size) return
+              if (y < 0 || y >= this.size) return
+              if (seen.some(([x2,y2]) => x2 === x && y2 === y)) return
+              toCheck.push([x,y])
+              seen.push([x,y])
+          }
+          const startPiece = this.pieceAt(startX, startY)
+          if (startPiece === undefined || startPiece === EMPTY || startPiece === KO) {
+              return []
+          }
+          // Seed with the start location.
+          maybeAddIntersection(startX,startY)
+          while (toCheck.length > 0) {
+              const [x, y] = toCheck.pop()
+              const piece = this.board[this.idx(x,y)]
+              if (piece === startPiece) {
+                  // It's part of the group.
+                  group.push([x,y])
+                  maybeAddIntersection(x,y-1)
+                  maybeAddIntersection(x,y+1)
+                  maybeAddIntersection(x-1,y)
+                  maybeAddIntersection(x+1,y)
+              }
+          }
+
+          return group
+      }
+
+      // Used to identify regions when scoring.
+      collectRegion(startX, startY, groupStatus) {
+          let seen = []
+          let region = []
+          let toCheck = []
+          let maybeAddIntersection = (x,y) => {
+              if (x < 0 || x >= this.size) return
+              if (y < 0 || y >= this.size) return
+              if (seen.some(([x2,y2]) => x2 === x && y2 === y)) return
+              toCheck.push([x,y])
+              seen.push([x,y])
+          }
+          const startPiece = this.pieceAt(startX, startY)
+          if (startPiece === undefined || startPiece === WHITE || startPiece === BLACK) return []
+
+          maybeAddIntersection(startX,startY)
+          while(toCheck.length > 0) {
+              const [x, y] = toCheck.pop()
+              const idx = this.idx(x,y)
+              const status = groupStatus[idx]
+              const piece = status === DEAD ? EMPTY : this.board[idx]
+              region.push([x,y])
+              // Expand the region until you reach a stone that is a
+              // different color from the stone at the current intersection.
+              if (piece === EMPTY || piece === KO) {
+                  maybeAddIntersection(x,y-1)
+                  maybeAddIntersection(x,y+1)
+                  maybeAddIntersection(x-1,y)
+                  maybeAddIntersection(x+1,y)
+              } else if (piece === BLACK || piece === WHITE) {
+                  if (this.pieceAt(x,y-1) === piece) maybeAddIntersection(x,y-1)
+                  if (this.pieceAt(x,y+1) === piece) maybeAddIntersection(x,y+1)
+                  if (this.pieceAt(x-1,y) === piece) maybeAddIntersection(x-1,y)
+                  if (this.pieceAt(x+1,y) === piece) maybeAddIntersection(x+1,y)
+              }
+          }
+          return region
+      }
+
+      captureGroup(group) {
+          if (group.length == 0) return
+          // FIXME: this is assumes the stones in the group are all the same color.
+          const color = this.board[this.idx(group[0][0], group[0][1])]
+          const opposite = color === BLACK ? WHITE:BLACK
+          for (let [gx,gy] of group) {
+              const i = this.idx(gx,gy)
+              this.board[i] = EMPTY
+              console.log('cap', color, gx, gy, i)
+          }
+          this.captures[opposite] += group.length
+      }
+
+      clearKo() {
+          for (let i=0; i<this.board.length; i++) {
+              if (this.board[i] === KO) this.board[i] = EMPTY
+          }
+      }
+  }
+
+  class Game {
+      constructor(size, handicap, komi) {
+          this.board = new Board(size, handicap)
+          this.state = GAME_PLAYING
+          if (handicap > 0) this.turn = WHITE
+          else this.turn = BLACK
+          this.komi = komi
+          this.history = []
+          this.future = []
+      }
+
+      oppositeTurn() {
+          if (this.turn == BLACK) return WHITE
+          else if (this.turn == WHITE) return BLACK
+          else throw(`Unexpected turn value {this.turn}`)
+      }
+
+      playAt(x, y) {
+          if (x < 0 || x >= this.size) return false
+          if (y < 0 || y >= this.size) return false
+
+          const piece = this.board.pieceAt(x,y)
+          if (piece !== EMPTY) return false
+
+          const newBoard = this.board.copy()
+          const opposite = this.oppositeTurn()
+
+          // A stone can be placed at x,y IF the group that the stone
+          // becomes a part of has at least 1 liberty OR the group has
+          // no liberties BUT it captures a group, creating liberties.
+          newBoard.setPieceAt(x, y, this.turn)
+          // Check for captures
+          let captures = []
+          for (let [px,py] of [[x, y+1],[x, y-1],[x+1, y],[x-1, y]]) {
+              if (newBoard.pieceAt(px,py) == opposite) {
+                  const {ok, liberties, color, group} = newBoard.countLiberties(px,py)
+                  console.log('CAPTURE?', ok, px, py, liberties)
+                  if (ok && liberties === 0) {
+                      console.log(JSON.stringify(group))
+                      newBoard.captureGroup(group)
+                      captures = [...captures, ...group]
+                  }
+              }
+          }
+          // Now check for liberties of the played-at location. If it
+          // has 0 liberties then it's an invalid move.
+          const {ok, liberties, color, group} = newBoard.countLiberties(x,y)
+          if (!ok || liberties == 0) {
+              return false
+          }
+
+          // Handle Ko. If the captured group was 1 stone and the
+          // stone doing the capturing is not part of a larger group
+          // and has 1 liberty at the location of the captured stone,
+          // then mark it as a Ko. FIXME: my intuition tells me this
+          // approximates the Ko rule but it's not perfect. I think
+          // strictly speaking Ko is about repeated board states.
+          newBoard.clearKo()
+          if (captures.length === 1 && group.length === 1 && liberties === 1) {
+              newBoard.setPieceAt(captures[0][0], captures[0][1], KO)
+          }
+
+          // Stone placement is valid.
+          this.board.lastMove = [x,y]
+          this.turn = opposite
+          this.history.push(this.board)
+          this.board = newBoard
+          if (this.future) this.future = []
+          return true
+      }
+
+      pass() {
+          if (this.board.lastMove === 'pass') {
+              this.goScoringMode()
+          } else {
+              this.history.push(this.board)
+              this.board = this.board.copy()
+              this.board.lastMove = 'pass'
+              this.turn = this.oppositeTurn()
+          }
+      }
+
+      resign() {
+          if (this.turn === BLACK) {
+              this.state = GAME_BLACK_RESIGNED
+          } else if (this.turn === WHITE) {
+              this.state = GAME_WHITE_RESIGNED
+          } else {
+              throw(`unknown turn this.board.turn`)
+          }
+      }
+
+      goScoringMode() {
+          this.state = GAME_SCORING
+          this.scoringOwnership = new Array(this.board.board.length).fill(-1)
+          this.scoringGroupStatus = new Array(this.board.board.length).fill(ALIVE)
+          this.updateScoring()
+      }
+
+      updateScoring() {
+          // Identify the regions
+          let seen = new Array(this.board.board.length).fill(false)
+          let regions = []
+          for (let x=0; x<this.board.size; x++) {
+              for (let y=0; y<this.board.size; y++) {
+                  if (seen[this.board.idx(x,y)]) continue
+                  const r = this.board.collectRegion(x, y, this.scoringGroupStatus)
+                  if (r.length === 0) continue
+                  r.forEach(([x,y]) => seen[this.board.idx(x,y)] = true)
+                  regions.push(r)
+              }
+          }
+          // Recalculate ownership
+          this.scoringOwnership.fill(-1)
+          for (let r of regions) {
+              // What is inside this region?
+              let count = {}
+              count[BLACK] = 0
+              count[WHITE] = 0
+              for (let [rx,ry] of r) {
+                  const piece = this.board.pieceAt(rx,ry)
+                  if (this.scoringGroupStatus[this.board.idx(rx,ry)] === DEAD) continue
+                  if (piece === BLACK || piece === WHITE) count[piece]++;
+              }
+              // Identify the region's owner and mark each
+              // intersection as such.
+              let regionOwner
+              if (count[BLACK] > 0 && count[WHITE] > 0) regionOwner = UNCERTAIN
+              else if (count[BLACK] > 0) regionOwner = BLACK
+              else if (count[WHITE] > 0) regionOwner = WHITE
+              else regionOwner = UNCERTAIN
+              for (let [rx,ry] of r) {
+                  this.scoringOwnership[this.board.idx(rx,ry)] = regionOwner
+              }
+          }
+      }
+
+      // Toggle the living status of the group of stones at x,y.
+      scoringToggleGroupStatus(x, y) {
+          const group = this.board.collectGroup(x,y)
+          for (let [gx, gy] of group) {
+              const idx = gy * this.board.size + gx
+              if (this.scoringGroupStatus[idx] === ALIVE) this.scoringGroupStatus[idx] = DEAD
+              else this.scoringGroupStatus[idx] = ALIVE
+          }
+          this.updateScoring()
+      }
+
+      calculateScore() {
+          let score = {}
+          score[WHITE] = 0
+          score[BLACK] = 0
+          let prisoners = {}
+          prisoners[WHITE] = 0
+          prisoners[BLACK] = 0
+          for (let x=0; x<this.board.size; x++) {
+              for (let y=0; y<this.board.size; y++) {
+                  const owner = this.scoringOwnership[y*this.board.size+x]
+                  const status = this.scoringGroupStatus[y*this.board.size+x]
+                  const piece = this.board.pieceAt(x,y)
+                  if (piece === EMPTY) score[owner]++
+                  else if (piece === WHITE || piece === BLACK) {
+                      if (status === DEAD) {
+                          score[owner]++
+                          prisoners[owner]++
+                      }
+                  }
+              }
+          }
+          return [score, prisoners]
+      }
+
+      goBackward() {
+          if (this.history.length > 0) {
+              this.future = [this.board, ...this.future]
+              this.board = this.history.pop()
+              this.turn = this.oppositeTurn()
+          }
+      }
+
+      goForward() {
+          if (this.future.length > 0) {
+              this.history.push(this.board)
+              this.board = this.future[0]
+              this.future = this.future.slice(1)
+              this.turn = this.oppositeTurn()
+          }
+      }
+
+      goBeginning() {
+          const newBoard = this.history[0]
+          this.future = [...this.history.slice(1), this.board, ...this.future]
+          this.history = []
+          this.board = newBoard
+          this.turn = BLACK
+      }
+
+      goEnd() {
+
+      }
+  }
+
+  function getOffsetsForDrawing(canvas, game) {
+      let smallestDim = Math.min(canvas.width, canvas.height)
+      let ofs = smallestDim / (game.board.size)
+      let gobanPixels = ofs * (game.board.size-1)
+      let xofs = (canvas.width - gobanPixels) / 2
+      let yofs = (canvas.height - gobanPixels) / 2
+
+      return [xofs, yofs, ofs]
+  }
+
+  function drawEmptyGoban(canvas, ctx, game) {
+      let [xofs, yofs, ofs] = getOffsetsForDrawing(canvas, game)
+
+      // Intersections
+      ctx.fillStyle = '#EEBB00'
+      ctx.fillRect(0,0,canvas.width,canvas.height)
+      ctx.beginPath()
+
+      for (let i=0; i<game.board.size; i++) {
+          const lineOfs = i * ofs
+          // hline
+          ctx.moveTo(xofs, yofs + lineOfs)
+          ctx.lineTo(canvas.width - xofs, yofs + lineOfs)
+          // vline
+          ctx.moveTo(xofs + lineOfs, yofs)
+          ctx.lineTo(xofs + lineOfs, canvas.height - yofs)
+      }
+      ctx.strokeStyle = '#000'
+      ctx.stroke()
+
+      // star points
+      const starPointRadius = ofs / 12
+      let starPoints = []
+      if (game.board.size % 2 == 1) {
+          // Tengen
+          const center = Math.floor(game.board.size / 2)
+          starPoints.push([center, center])
+      }
+      if (game.board.size >= 19) {
+          starPoints.push([3,3],
+                          [3,game.board.size-4],
+                          [game.board.size-4,game.board.size-4],
+                          [game.board.size-4, 3],
+                          [3,Math.floor(game.board.size/2)],
+                          [game.board.size-4,Math.floor(game.board.size/2)],
+                          [Math.floor(game.board.size/2),3],
+                          [Math.floor(game.board.size/2),game.board.size-4])
+      } else if (game.board.size >= 13) {
+          starPoints.push([3,3], [3,game.board.size-4], [game.board.size-4,game.board.size-4], [game.board.size-4, 3])
+      } else if (game.board.size >= 9) {
+          starPoints.push([2,2], [2,game.board.size-3], [game.board.size-3,game.board.size-3], [game.board.size-3, 2])
+      }
+
+
+      ctx.fillStyle = '#000'
+      for (let [cx, cy] of starPoints) {
+          ctx.beginPath()
+          ctx.arc(xofs + cx * ofs, yofs + cy * ofs, starPointRadius, 0, Math.PI*2)
+          ctx.fill()
+      }
+  }
+
+  function drawGobanActive(canvas, ctx, game, mouseX, mouseY)  {
+      let [xofs, yofs, ofs] = getOffsetsForDrawing(canvas, game)
+
+      drawEmptyGoban(canvas, ctx, game)
+      // Stones
+      const stoneRadius = ofs/2.5
+      for (let x=0; x<game.board.size; x++) {
+          for (let y=0; y<game.board.size; y++) {
+              const piece = game.board.board[y * game.board.size + x]
+              if (piece === BLACK) {
+                  ctx.beginPath()
+                  ctx.arc(xofs + x * ofs, yofs + y * ofs, stoneRadius, 0, Math.PI*2)
+                  ctx.fillStyle = '#000'
+                  ctx.strokeStyle = '#FFF'
+                  ctx.fill()
+                  //ctx.stroke()
+              } else if (piece === WHITE) {
+                  ctx.beginPath()
+                  ctx.arc(xofs + x * ofs, yofs + y * ofs, stoneRadius, 0, Math.PI*2)
+                  ctx.fillStyle = '#FFF'
+                  ctx.strokeStyle = '#000'
+                  ctx.fill()
+                  ctx.stroke()
+              } else if (piece === KO) {
+                  // ctx.beginPath()
+                  //ctx.arc(xofs + x * ofs, yofs + y * ofs, stoneRadius/2, 0, Math.PI*2)
+                  ctx.strokeStyle = '#000'
+                  ctx.strokeRect(xofs + x * ofs - stoneRadius/2,
+                                 yofs + y * ofs - stoneRadius/2,
+                                 stoneRadius,
+                                 stoneRadius)
+                  // ctx.stroke()
+              }
+          }
+      }
+
+      // A hovering stone below the pointer
+      if (mouseX && mouseY) {
+          const mx = Math.round((mouseX - xofs) / ofs)
+          const my = Math.round((mouseY - yofs) / ofs)
+
+          if (game.board.pieceAt(mx,my) === EMPTY) {
+              ctx.beginPath()
+              ctx.arc(xofs + mx * ofs, yofs + my * ofs, stoneRadius, 0, Math.PI*2)
+              if (game.turn === BLACK) {
+                  ctx.fillStyle = `rgba(0,0,0,0.3)`
+                  ctx.strokeStyle = `rgba(255,255,255,0.3)`
+              } else if (game.turn === WHITE) {
+                  ctx.fillStyle = `rgba(255,255,255,0.5)`
+                  ctx.strokeStyle = `rgba(0,0,0,0.5)`
+              } else {
+                  throw(`unknown turn {game.turn}`)
+              }
+              ctx.fill()
+              // ctx.stroke()
+          }
+      }
+      let txt
+      let indicator = document.getElementById('turn_indicator')
+      if (game.turn === BLACK) {
+          indicator.innerHTML = '&larr;'
+          indicator.className = 'black_to_play'
+      } else {
+          indicator.innerHTML = '&rarr;'
+          indicator.className = 'white_to_play'
+      }
+  }
+
+  function drawGobanScoring(canvas, ctx, game) {
+      let [xofs, yofs, ofs] = getOffsetsForDrawing(canvas, game)
+
+      drawEmptyGoban(canvas, ctx, game)
+
+      const stoneRadius = ofs/2.5
+      for (let x=0; x<game.board.size; x++) {
+          for (let y=0; y<game.board.size; y++) {
+              const status = game.scoringGroupStatus[game.board.idx(x,y)]
+              const piece = game.board.pieceAt(x,y)
+              const alpha = status === ALIVE ? 1:0.6
+              if (piece === BLACK) {
+                  ctx.beginPath()
+                  ctx.arc(xofs + x * ofs, yofs + y * ofs, stoneRadius, 0, Math.PI*2)
+                  ctx.fillStyle = `rgba(0,0,0,${alpha})`
+                  ctx.strokeStyle = `rgba(255,255,255,${alpha})`
+                  ctx.fill()
+                  //ctx.stroke()
+              } else if (piece === WHITE) {
+                  ctx.beginPath()
+                  ctx.arc(xofs + x * ofs, yofs + y * ofs, stoneRadius, 0, Math.PI*2)
+                  ctx.fillStyle = `rgba(255,255,255,${alpha})`
+                  ctx.strokeStyle = `rgba(0,0,0,${alpha})`
+                  ctx.fill()
+                  ctx.stroke()
+              }
+          }
+      }
+
+      // Scoring
+      const scoreSize = stoneRadius/2
+      for (let x=0; x<game.board.size; x++) {
+          for (let y=0; y<game.board.size; y++) {
+              const owner = game.scoringOwnership[y * game.board.size + x]
+              if (owner === BLACK) {
+                  ctx.fillStyle = '#000'
+                  ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
+              } else if (owner === WHITE) {
+                  ctx.fillStyle = '#FFF'
+                  ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
+              } else if (owner === UNCERTAIN) {
+                  ctx.fillStyle = '#F00'
+                  ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
+              } else {
+                  ctx.fillStyle = '#0FF'
+                  ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
+              }
+          }
+      }
+      const [score, prisoners] = game.calculateScore()
+      const blackScore = score[BLACK] + prisoners[BLACK]
+      const whiteScore = score[WHITE] + prisoners[WHITE] + game.komi
+
+      // FIXME: Bleh
+      let txt, className
+      if (blackScore === whiteScore) {
+          txt = 'Jigo'
+          className = 'jigo'
+      } else if (blackScore > whiteScore) {
+          txt = `B+${blackScore-whiteScore}`
+          className = 'black_to_play'
+      } else {
+          txt = `W+${whiteScore-blackScore}`
+          className = 'white_to_play'
+      }
+      let element = document.getElementById('turn_indicator')
+      element.className = className
+      element.innerHTML = txt
+  }
+
+  function drawGoban(canvas, ctx, game, mouseX, mouseY) {
+      if (game.state === GAME_SCORING) {
+          drawGobanScoring(canvas, ctx, game)
+      } else if (game.state === GAME_BLACK_RESIGNED) {
+          drawGobanActive(canvas, ctx, game)
+          document.getElementById('score').innerHTML = 'W+R'
+      } else if (game.state === GAME_WHITE_RESIGNED) {
+          drawGobanActive(canvas, ctx, game)
+          document.getElementById('score').innerHTML = 'B+R'
+      } else {
+          drawGobanActive(canvas, ctx, game, mouseX, mouseY)
+      }
+
+  }
+
+  var canvas = document.getElementById('goban')
+  var ctx = canvas.getContext('2d')
+  var game = new Game(9, 0, 0.5)
+
+  function resetGameFromSettings() {
+      const handicap = parseInt(document.getElementById('handicap').value)
+      const size = parseInt(document.getElementById('size').value)
+      game = new Game(size, handicap, 0.5)
+  }
+
+    // document.getElementById('back').addEventListener('click', () => {
+    //     game.goBackward()
+    //     drawGoban(canvas, ctx, game)
+    // })
+
+    // document.getElementById('forward').addEventListener('click', () => {
+    //     game.goForward()
+    //     drawGoban(canvas, ctx, game)
+    // })
+    document.getElementById('undo').addEventListener('click', () => {
+        if (game.state === GAME_PLAYING) {
+            game.goBackward()
+        } else {
+            game.state = GAME_PLAYING
+        }
+        drawGoban(canvas, ctx, game)
+    })
+
+    document.getElementById('pass').addEventListener('click', () => {
+        if (game.state === GAME_PLAYING) {
+            game.pass()
+            drawGoban(canvas, ctx, game)
+        }
+    })
+
+    // document.getElementById('resign').addEventListener('click', () => {
+    //     if (game.state === GAME_PLAYING) {
+    //         game.resign()
+    //         drawGoban(canvas, ctx, game)
+    //     }
+    // })
+
+  document.getElementById('newgame').addEventListener('click', () => {
+      resetGameFromSettings()
+      drawGoban(canvas, ctx, game)
+  })
+
+  // canvas.width = 500
+  // canvas.height = 500
+  canvas.width = canvas.clientWidth * window.devicePixelRatio
+  canvas.height = canvas.clientHeight * window.devicePixelRatio
+  window.addEventListener('resize', () => {
+      console.log('resize')
+      canvas.width = canvas.clientWidth * window.devicePixelRatio
+      canvas.height = canvas.clientHeight * window.devicePixelRatio
+      drawGoban(canvas, ctx, game)
+  })
+
+  console.log('canvas', canvas.width, canvas.height)
+
+  let lastMouseX, lastMouseY
+  canvas.addEventListener('mousemove', (ev) => {
+      const mx = ev.offsetX * window.devicePixelRatio
+      const my = ev.offsetY * window.devicePixelRatio
+
+      let [xofs, yofs, ofs] = getOffsetsForDrawing(canvas, game)
+      const x = Math.round((mx - xofs) / ofs)
+      const y = Math.round((my - yofs) / ofs)
+
+      if (lastMouseX !== x || lastMouseY !== y) {
+          drawGoban(canvas, ctx, game, mx, my)
+      }
+      lastMouseX = x
+      lastMouseY = y
+  })
+
+  canvas.addEventListener('mousedown', (ev) => {
+      const mx = ev.offsetX * window.devicePixelRatio
+      const my = ev.offsetY * window.devicePixelRatio
+
+      let [xofs, yofs, ofs] = getOffsetsForDrawing(canvas, game)
+      const x = Math.round((mx - xofs) / ofs)
+      const y = Math.round((my - yofs) / ofs)
+
+      console.log(x,y)
+
+      if (game.state === GAME_SCORING) {
+          game.scoringToggleGroupStatus(x,y)
+      } else if (game.state === GAME_PLAYING) {
+          const ret = game.playAt(x, y)
+          console.log(ret)
+      }
+      drawGoban(canvas, ctx, game)
+
+      console.log('turn', game.turn)
+  })
+
+  // game.board.board[1] = BLACK
+  // game.board.board[0] = WHITE
+  game.board.board = [0,0,0,0,2,2,1,0,0,0,0,0,2,2,1,0,0,0,2,2,2,2,1,0,1,1,0,1,2,1,1,1,1,2,1,1,1,2,1,0,1,2,2,2,1,1,1,0,1,2,0,0,1,2,0,0,1,2,2,0,2,1,2,0,0,1,1,2,0,2,1,2,0,0,0,1,1,2,2,2,2]
+
+
+  game.goScoringMode()
+
+  drawGoban(canvas, ctx, game)
+
+
+</script>
+</body>
+</html>
