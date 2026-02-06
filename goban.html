@@ -14,23 +14,44 @@
             justify-content: center;
             height: 100vh;
         }
-        .area {
+        .tall {
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             width: 100%;
             height: 100%;
-            max-width: min(100vw,100vh);
-            max-height: min(100vw,100vh);
+            /* max-width: min(100vw,100vh); */
+            /* max-height: min(100vw,100vh); */
             background-color: #f0f0f0;
             position: relative;
         }
 
-        .status {
+        .wide {
             display: flex;
-            background-color: #e0e0e0;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            /* width: 100%; */
+            height: 100%;
+            /* max-width: min(100vw,100vh); */
+            /* max-height: min(100vw,100vh); */
+            /* background-color: #f0f0f0; */
+            position: relative;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25em;
+            background-color: #0AD;
             width: 100%;
+            margin-left: 1em;
+            padding: 1em 1em 1em 1em;
+        }
+
+        .topbar {
+
         }
 
         .point_to_black {
@@ -50,10 +71,12 @@
         .white_to_play {
             background-color: #FFF;
             color: #000;
+            text-align: center;
         }
         .black_to_play {
             background-color: #000;
             color: #FFF;
+            text-align: center;
         }
 
         .jigo {
@@ -62,21 +85,26 @@
         }
 
         #goban {
-            flex: 1;
-            width: 100%;
-            height: 100%;
+            /* flex: 1; */
+            /* width: 100%; */
+            /* height: 100%; */
+            width: min(100vw,100vh);
+            height: min(100vw,100vh);
+        }
+
+        button {
+            height: 2em;
+        }
+
+        select {
+            height: 2em;
         }
 
     </style>
   </head>
 <body>
 <div class="container">
-<div class="area">
-  <div class="status">
-    <div style="flex-grow: 1; background-color: black; color: white; padding-left: 1em">B  &mdash; Cap: <span id="black_prisoners">0</span></div>
-    <div id="turn_indicator">&larr;</div>
-    <div style="flex-grow: 1; background-color: white; color: black; text-align:right;  padding-right: 1em">W &mdash; Cap: <span id="white_prisoners">0</span></div>
-  </div>
+<div class="wide">
 <canvas id="goban"></canvas>
 <!-- <div> -->
 <!--   <button id="beginning">&lt;&lt;</button> -->
@@ -84,7 +112,11 @@
 <!--   <button id="forward">&gt;</button> -->
 <!--   <button id="end">&gt;&gt;</button> -->
 <!-- </div> -->
-<div>
+<div class="sidebar">
+    <div style="flex-grow: 1; background-color: black; color: white; padding: 0 1em 0 1em">Captures: <span id="black_prisoners">0</span></div>
+    <div style="flex-grow: 1; background-color: white; color: black;  padding: 0 1em 0 1em">Captures: <span id="white_prisoners">0</span></div>
+    <div id="turn_indicator">B To Play</div>
+
   <button id="undo">Undo</button>
   <button id="pass">Pass</button>
   <select id="size">
@@ -585,6 +617,12 @@
       ctx.strokeStyle = '#000'
       ctx.stroke()
 
+      const lw = ctx.lineWidth
+      ctx.lineWidth = Math.max(2, Math.round(ofs / 30))
+      console.log(ctx.lineWidth)
+      ctx.strokeRect(xofs, yofs, canvas.width - xofs*2, canvas.height - yofs*2)
+      ctx.lineWidth = lw
+
       // star points
       const starPointRadius = ofs / 12
       let starPoints = []
@@ -674,15 +712,19 @@
               // ctx.stroke()
           }
       }
-      let txt
       let indicator = document.getElementById('turn_indicator')
       if (game.turn === BLACK) {
-          indicator.innerHTML = '&larr;'
+          indicator.innerHTML = 'B'
           indicator.className = 'black_to_play'
       } else {
-          indicator.innerHTML = '&rarr;'
+          indicator.innerHTML = 'W'
           indicator.className = 'white_to_play'
       }
+
+      let whiteCap = document.getElementById('white_prisoners')
+      let blackCap = document.getElementById('black_prisoners')
+      whiteCap.innerHTML = game.board.captures[WHITE]
+      blackCap.innerHTML = game.board.captures[BLACK]
   }
 
   function drawGobanScoring(canvas, ctx, game) {
