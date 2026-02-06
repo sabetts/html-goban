@@ -44,7 +44,7 @@
             display: flex;
             flex-direction: column;
             gap: 0.25em;
-            background-color: #0AD;
+            background-color: #09C;
             width: 100%;
             margin-left: 1em;
             padding: 1em 1em 1em 1em;
@@ -115,7 +115,7 @@
 <div class="sidebar">
     <div style="flex-grow: 1; background-color: black; color: white; padding: 0 1em 0 1em">Captures: <span id="black_prisoners">0</span></div>
     <div style="flex-grow: 1; background-color: white; color: black;  padding: 0 1em 0 1em">Captures: <span id="white_prisoners">0</span></div>
-    <div id="turn_indicator">B To Play</div>
+    <div id="turn_indicator">B</div>
 
   <button id="undo">Undo</button>
   <button id="pass">Pass</button>
@@ -619,7 +619,6 @@
 
       const lw = ctx.lineWidth
       ctx.lineWidth = Math.max(2, Math.round(ofs / 30))
-      console.log(ctx.lineWidth)
       ctx.strokeRect(xofs, yofs, canvas.width - xofs*2, canvas.height - yofs*2)
       ctx.lineWidth = lw
 
@@ -887,6 +886,12 @@
       lastMouseX = x
       lastMouseY = y
   })
+  canvas.addEventListener('mouseleave', (ev) => {
+      lastMouseX = undefined
+      lastMouseY = undefined
+      drawGoban(canvas, ctx, game)
+  })
+
 
   canvas.addEventListener('mousedown', (ev) => {
       const mx = ev.offsetX * window.devicePixelRatio
