@@ -448,7 +448,7 @@
           }
 
           // Stone placement is valid.
-          this.board.lastMove = [x,y]
+          newBoard.lastMove = [x,y]
           this.turn = opposite
           this.history.push(this.board)
           this.board = newBoard
@@ -688,6 +688,22 @@
                   // ctx.stroke()
               }
           }
+      }
+
+      // Highlight the last move.
+      if (Array.isArray(game.board.lastMove)) {
+          const [x,y] = game.board.lastMove
+          ctx.beginPath()
+          ctx.arc(xofs + x * ofs, yofs + y * ofs, stoneRadius*3/5, 0, Math.PI*2)
+          if (game.turn === BLACK) ctx.strokeStyle = '#444'
+          else ctx.strokeStyle = '#EEE'
+          const lw = ctx.lineWidth
+          ctx.lineWidth = Math.max(4, Math.round(ofs/20))
+          ctx.stroke()
+          ctx.lineWidth = lw
+          // if (game.turn === BLACK) ctx.fillStyle = '#000'
+          // else ctx.fillStyle = '#FFF'
+          // ctx.fill()
       }
 
       // A hovering stone below the pointer
