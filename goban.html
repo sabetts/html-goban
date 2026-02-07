@@ -914,46 +914,45 @@
       // want the sidebar to be below the goban when in a tall window.
       const sidebar = document.getElementById('sidebar')
       const w = window.innerWidth
-      // For a reason I don't understand I get a scrollbar if any
-      // taller than this.
+      // For a reason I don't understand, on Firefox I get a scrollbar
+      // if any taller than this.
       const h = window.innerHeight - 1
       const sw = sidebar.offsetWidth
       const sh = sidebar.offsetHeight
       const gap = 20
+      const canvasWidth = canvas.width
+      const canvasHeight = canvas.height
 
-      if (w > h) {
-          const size = Math.min(h, w - sw - gap)
-          const canvasX = Math.floor((w-size-sw-gap)/2)
-          const canvasY = Math.floor((h-size)/2)
-          const sidebarX = Math.floor(canvasX+size+gap)
-          const sidebarY = Math.floor((h-sh)/2)
+      console.log('sb', sw, sh)
 
-          canvas.style.top = `${canvasY}px`
-          canvas.style.left = `${canvasX}px`
-          sidebar.style.top = `${sidebarY}px`
-          sidebar.style.left = `${sidebarX}px`
-
-          canvas.style.width = `${size}px`
-          canvas.style.height = `${size}px`
-          canvas.width = size * window.devicePixelRatio
-          canvas.height = size * window.devicePixelRatio
-
+      let size, canvasX, canvasY, sidebarX, sidebarY
+      if (window.innerWidth > window.innerHeight) {
+          size = Math.min(h, w - sw - gap)
+          canvasX = Math.floor((w-size-sw-gap)/2)
+          canvasY = Math.floor((h-size)/2)
+          sidebarX = Math.floor(canvasX+size+gap)
+          sidebarY = Math.floor((h-sh)/2)
       } else {
-          const size = Math.min(h - sh - gap, w)
-          const canvasX = Math.floor((w-size)/2)
-          const canvasY = Math.floor((h-size-sh-gap)/2)
-          const sidebarX = Math.floor((w-sw)/2)
-          const sidebarY = Math.floor(canvasY+size+gap)
+          size = Math.min(h - sh - gap, w)
+          canvasX = Math.floor((w-size)/2)
+          canvasY = Math.floor((h-size-sh-gap)/2)
+          sidebarX = Math.floor((w-sw)/2)
+          sidebarY = Math.floor(canvasY+size+gap)
+      }
 
-          canvas.style.top = `${canvasY}px`
-          canvas.style.left = `${canvasX}px`
-          sidebar.style.top = `${sidebarY}px`
-          sidebar.style.left = `${sidebarX}px`
+      canvas.style.top = `${canvasY}px`
+      canvas.style.left = `${canvasX}px`
+      sidebar.style.top = `${sidebarY}px`
+      sidebar.style.left = `${sidebarX}px`
 
-          canvas.style.width = `${size}px`
-          canvas.style.height = `${size}px`
-          canvas.width = size * window.devicePixelRatio
-          canvas.height = size * window.devicePixelRatio
+      canvas.style.width = `${size}px`
+      canvas.style.height = `${size}px`
+      // If the new size is the same as before, a redraw can be
+      // avoided by not touching the canvas dimensions.
+      const newSize = size * window.devicePixelRatio
+      if (canvasWidth !== newSize || canvasHeight !== newSize) {
+          canvas.width = newSize
+          canvas.height = newSize
       }
   }
 
@@ -965,6 +964,10 @@
           // console.log('redraw')
           drawGoban(canvas, ctx, game);
       }
+      // FIXME: For reasons I don't understand, the sidebar doesn't
+      // get placed properly when a resize causes it to go below the
+      // the goban. It seems that its width changes after the resize
+      // event fires.
   })
 
   let lastMouseX, lastMouseY
