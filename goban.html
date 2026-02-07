@@ -8,58 +8,72 @@
             margin: 0;
             background: #666;
         }
-        .container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-        }
-        .tall {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
-            /* max-width: min(100vw,100vh); */
-            /* max-height: min(100vw,100vh); */
-            background-color: #f0f0f0;
-            position: relative;
+
+        #goban {
+            position: absolute;
         }
 
-        .wide {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            /* width: 100%; */
-            height: 100%;
-            /* max-width: min(100vw,100vh); */
-            /* max-height: min(100vw,100vh); */
-            /* background-color: #f0f0f0; */
-            position: relative;
-        }
-
-        .sidebar {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25em;
+        #sidebar {
+            position: absolute;
             background-color: #09C;
-            width: 100%;
-            margin-left: 1em;
-            padding: 1em 1em 1em 1em;
+            padding: 16px;
         }
 
-        .topbar {
+        /* If the display is wide. */
+        @media(min-aspect-ratio: 1/1) {
+            #sidebar {
+                display: flex;
+                flex-direction: column;
+                gap: 0.25em;
+            }
+        }
+
+        /* If the display is tall. */
+        @media(max-aspect-ratio: 1/1) {
+            #sidebar {
+                position: absolute;
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                grid-template-rows: 1fr 1fr 1fr;
+                gap: 0.25em;
+            }
+
+            /* in tall mode, tell the grid where to put the status items. */
+            #turn_indicator {
+                grid-column: 1;
+                grid-row: 1;
+            }
+
+            #white_captures {
+                grid-column: 1;
+                grid-row: 2;
+            }
+
+            #black_captures {
+                grid-column: 1;
+                grid-row: 3;
+            }
+
+            #size {
+                grid-column: 3;
+                grid-row: 1;
+            }
+
+            #handicap {
+                grid-column: 3;
+                grid-row: 2;
+            }
+
+            #newgame {
+                grid-column: 3;
+                grid-row: 3;
+            }
 
         }
 
         .point_to_black {
             width: 10px;
             height: 10px;
-            /* border-top: 0.5em solid transparent; */
-            /* border-right: 1em solid #FFF; */
-            /* border-bottom: 0.5em solid transparent; */
             border-top: 25px solid transparent;
             border-right: 30px solid #999;
             border-left: 30px solid #999;
@@ -68,28 +82,42 @@
             background: #0FF
         }
 
+        #turn_indicator {
+            vertical-align: middle;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #white_captures {
+            flex-grow: 1;
+            background-color: white;
+            color: black;
+            padding: 0 1em 0 1em;
+            display: flex;
+            align-items: center;
+        }
+
+        #black_captures {
+            flex-grow: 1;
+            background-color: black;
+            color: white;
+            padding: 0 1em 0 1em;
+            display: flex;
+            align-items: center;
+        }
+
         .white_to_play {
             background-color: #FFF;
             color: #000;
-            text-align: center;
         }
         .black_to_play {
             background-color: #000;
             color: #FFF;
-            text-align: center;
         }
-
         .jigo {
             background-color: #666;
             color: #FFF;
-        }
-
-        #goban {
-            /* flex: 1; */
-            /* width: 100%; */
-            /* height: 100%; */
-            width: min(100vw,100vh);
-            height: min(100vw,100vh);
         }
 
         button {
@@ -103,8 +131,6 @@
     </style>
   </head>
 <body>
-<div class="container">
-<div class="wide">
 <canvas id="goban"></canvas>
 <!-- <div> -->
 <!--   <button id="beginning">&lt;&lt;</button> -->
@@ -112,10 +138,10 @@
 <!--   <button id="forward">&gt;</button> -->
 <!--   <button id="end">&gt;&gt;</button> -->
 <!-- </div> -->
-<div class="sidebar">
-    <div style="flex-grow: 1; background-color: black; color: white; padding: 0 1em 0 1em">Captures: <span id="black_prisoners">0</span></div>
-    <div style="flex-grow: 1; background-color: white; color: black;  padding: 0 1em 0 1em">Captures: <span id="white_prisoners">0</span></div>
-    <div id="turn_indicator">B</div>
+<div id="sidebar">
+  <div id="black_captures">Captures:&nbsp;<span id="black_prisoners">0</span></div>
+  <div id="white_captures">Captures:&nbsp;<span id="white_prisoners">0</span></div>
+  <div id="turn_indicator">B</div>
 
   <button id="undo">Undo</button>
   <button id="pass">Pass</button>
@@ -138,8 +164,6 @@
   </select>
   <button id="newgame">New Game</button>
 </div>
-</div>
-</div>
 
 <script>
   const EMPTY = 0
@@ -153,6 +177,8 @@
 
   const GAME_PLAYING = 0
   const GAME_SCORING = 1
+  // Not used in an over-the-board goban. This can be decided between
+  // the players.
   const GAME_BLACK_RESIGNED = 2
   const GAME_WHITE_RESIGNED = 3
 
@@ -600,11 +626,17 @@
   function drawEmptyGoban(canvas, ctx, game) {
       let [xofs, yofs, ofs] = getOffsetsForDrawing(canvas, game)
 
-      // Intersections
-      ctx.fillStyle = '#EEBB00'
+      // The board is the biggest square that fits inside the
+      // canvas. For the parts of the board that aren't in the square,
+      // leave them transparent.
+      ctx.fillStyle = '#0AA'
       ctx.fillRect(0,0,canvas.width,canvas.height)
-      ctx.beginPath()
+      // ctx.clearRect(0,0,canvas.width,canvas.height)
+      ctx.fillStyle = '#EEBB00'
+      ctx.fillRect(xofs-ofs/2,yofs-ofs/2,canvas.width-xofs*2+ofs,canvas.height-yofs*2+ofs)
 
+      // Intersections
+      ctx.beginPath()
       for (let i=0; i<game.board.size; i++) {
           const lineOfs = i * ofs
           // hline
@@ -829,7 +861,7 @@
 
   var canvas = document.getElementById('goban')
   var ctx = canvas.getContext('2d')
-  var game = new Game(9, 0, 0.5)
+  var game
   var previousGame
 
   function resetGameFromSettings() {
@@ -861,21 +893,12 @@
         }
         drawGoban(canvas, ctx, game)
     })
-
     document.getElementById('pass').addEventListener('click', () => {
         if (game.state === GAME_PLAYING) {
             game.pass()
             drawGoban(canvas, ctx, game)
         }
     })
-
-    // document.getElementById('resign').addEventListener('click', () => {
-    //     if (game.state === GAME_PLAYING) {
-    //         game.resign()
-    //         drawGoban(canvas, ctx, game)
-    //     }
-    // })
-
   document.getElementById('newgame').addEventListener('click', () => {
       if (game.history.length !== 0 || game.future.length !== 0) {
           previousGame = game
@@ -884,18 +907,65 @@
       drawGoban(canvas, ctx, game)
   })
 
-  // canvas.width = 500
-  // canvas.height = 500
-  canvas.width = canvas.clientWidth * window.devicePixelRatio
-  canvas.height = canvas.clientHeight * window.devicePixelRatio
-  window.addEventListener('resize', () => {
-      console.log('resize')
-      canvas.width = canvas.clientWidth * window.devicePixelRatio
-      canvas.height = canvas.clientHeight * window.devicePixelRatio
-      drawGoban(canvas, ctx, game)
-  })
+  function resizeCanvas() {
+      // I want the canvas to be the biggest square that fits in the
+      // viewport and I want a sidebar beside it. Only way I've found
+      // to do this is manual layout. To make things trickier, I also
+      // want the sidebar to be below the goban when in a tall window.
+      const sidebar = document.getElementById('sidebar')
+      const w = window.innerWidth
+      // For a reason I don't understand I get a scrollbar if any
+      // taller than this.
+      const h = window.innerHeight - 1
+      const sw = sidebar.offsetWidth
+      const sh = sidebar.offsetHeight
+      const gap = 20
 
-  console.log('canvas', canvas.width, canvas.height)
+      if (w > h) {
+          const size = Math.min(h, w - sw - gap)
+          const canvasX = Math.floor((w-size-sw-gap)/2)
+          const canvasY = Math.floor((h-size)/2)
+          const sidebarX = Math.floor(canvasX+size+gap)
+          const sidebarY = Math.floor((h-sh)/2)
+
+          canvas.style.top = `${canvasY}px`
+          canvas.style.left = `${canvasX}px`
+          sidebar.style.top = `${sidebarY}px`
+          sidebar.style.left = `${sidebarX}px`
+
+          canvas.style.width = `${size}px`
+          canvas.style.height = `${size}px`
+          canvas.width = size * window.devicePixelRatio
+          canvas.height = size * window.devicePixelRatio
+
+      } else {
+          const size = Math.min(h - sh - gap, w)
+          const canvasX = Math.floor((w-size)/2)
+          const canvasY = Math.floor((h-size-sh-gap)/2)
+          const sidebarX = Math.floor((w-sw)/2)
+          const sidebarY = Math.floor(canvasY+size+gap)
+
+          canvas.style.top = `${canvasY}px`
+          canvas.style.left = `${canvasX}px`
+          sidebar.style.top = `${sidebarY}px`
+          sidebar.style.left = `${sidebarX}px`
+
+          canvas.style.width = `${size}px`
+          canvas.style.height = `${size}px`
+          canvas.width = size * window.devicePixelRatio
+          canvas.height = size * window.devicePixelRatio
+      }
+  }
+
+  window.addEventListener('resize', () => {
+      let oldw = canvas.width
+      let oldh = canvas.height
+      resizeCanvas();
+      if (oldw !== canvas.width || oldh !== canvas.height) {
+          // console.log('redraw')
+          drawGoban(canvas, ctx, game);
+      }
+  })
 
   let lastMouseX, lastMouseY
   canvas.addEventListener('mousemove', (ev) => {
@@ -917,8 +987,6 @@
       lastMouseY = undefined
       drawGoban(canvas, ctx, game)
   })
-
-
   canvas.addEventListener('mousedown', (ev) => {
       const mx = ev.offsetX * window.devicePixelRatio
       const my = ev.offsetY * window.devicePixelRatio
@@ -940,15 +1008,15 @@
       console.log('turn', game.turn)
   })
 
-  // game.board.board[1] = BLACK
-  // game.board.board[0] = WHITE
-  game.board.board = [0,0,0,0,2,2,1,0,0,0,0,0,2,2,1,0,0,0,2,2,2,2,1,0,1,1,0,1,2,1,1,1,1,2,1,1,1,2,1,0,1,2,2,2,1,1,1,0,1,2,0,0,1,2,0,0,1,2,2,0,2,1,2,0,0,1,1,2,0,2,1,2,0,0,0,1,1,2,2,2,2]
+  // A finished game for testing scoring.
+  // game = new Game(9, 0, 0.5)
+  // game.board.board = [0,0,0,0,2,2,1,0,0,0,0,0,2,2,1,0,0,0,2,2,2,2,1,0,1,1,0,1,2,1,1,1,1,2,1,1,1,2,1,0,1,2,2,2,1,1,1,0,1,2,0,0,1,2,0,0,1,2,2,0,2,1,2,0,0,1,1,2,0,2,1,2,0,0,0,1,1,2,2,2,2]
+  // game.goScoringMode()
 
-
-  game.goScoringMode()
-
+  resetGameFromSettings()
+  resizeCanvas()
   drawGoban(canvas, ctx, game)
-
+  console.log('canvas', canvas.width, canvas.height)
 
 </script>
 </body>
