@@ -89,7 +89,7 @@
             justify-content: center;
         }
 
-        #white_captures {
+        #white_captures_area {
             flex-grow: 1;
             background-color: white;
             color: black;
@@ -98,7 +98,7 @@
             align-items: center;
         }
 
-        #black_captures {
+        #black_captures_area {
             flex-grow: 1;
             background-color: black;
             color: white;
@@ -139,8 +139,8 @@
 <!--   <button id="end">&gt;&gt;</button> -->
 <!-- </div> -->
 <div id="sidebar">
-  <div id="black_captures">Captures:&nbsp;<span id="black_prisoners">0</span></div>
-  <div id="white_captures">Captures:&nbsp;<span id="white_prisoners">0</span></div>
+  <div id="black_captures_area">Captures:&nbsp;<span id="black_captures">0</span></div>
+  <div id="white_captures_area">Captures:&nbsp;<span id="white_captures">0</span></div>
   <div id="turn_indicator">B</div>
 
   <button id="undo">Undo</button>
@@ -543,28 +543,28 @@
           this.updateScoring()
       }
 
-      calculateScore() {
-          let score = {}
-          score[WHITE] = 0
-          score[BLACK] = 0
-          let prisoners = {}
-          prisoners[WHITE] = 0
-          prisoners[BLACK] = 0
+      countPointsOnBoard() {
+          let points = {}
+          points[WHITE] = 0
+          points[BLACK] = 0
+          let captures = {}
+          captures[WHITE] = 0
+          captures[BLACK] = 0
           for (let x=0; x<this.board.size; x++) {
               for (let y=0; y<this.board.size; y++) {
                   const owner = this.scoringOwnership[y*this.board.size+x]
                   const status = this.scoringGroupStatus[y*this.board.size+x]
                   const piece = this.board.pieceAt(x,y)
-                  if (piece === EMPTY) score[owner]++
+                  if (piece === EMPTY) points[owner]++
                   else if (piece === WHITE || piece === BLACK) {
                       if (status === DEAD) {
-                          score[owner]++
-                          prisoners[owner]++
+                          points[owner]++
+                          captures[owner]++
                       }
                   }
               }
           }
-          return [score, prisoners]
+          return [points, captures]
       }
 
       goBackward() {
@@ -752,8 +752,8 @@
           indicator.className = 'white_to_play'
       }
 
-      let whiteCap = document.getElementById('white_prisoners')
-      let blackCap = document.getElementById('black_prisoners')
+      let whiteCap = document.getElementById('white_captures')
+      let blackCap = document.getElementById('black_captures')
       whiteCap.innerHTML = game.board.captures[WHITE]
       blackCap.innerHTML = game.board.captures[BLACK]
   }
@@ -807,9 +807,11 @@
               }
           }
       }
-      const [score, prisoners] = game.calculateScore()
-      const blackScore = score[BLACK] + prisoners[BLACK]
-      const whiteScore = score[WHITE] + prisoners[WHITE] + game.komi
+      const [points, captures] = game.countPointsOnBoard()
+      const blackScore = points[BLACK] + captures[BLACK] + game.board.captures[BLACK]
+      const whiteScore = points[WHITE] + captures[WHITE] + game.board.captures[WHITE] + game.komi
+
+      console.log(`Score B ${points[BLACK]}+${captures[BLACK]}+${game.board.captures[BLACK]}=${blackScore} W ${points[WHITE]}+${captures[WHITE]}+${game.board.captures[WHITE]}+${game.komi}=${whiteScore}`)
 
       // FIXME: Bleh
       let txt, className
@@ -1002,6 +1004,10 @@
 
   // game = new Game(9, 0, 0.5)
   // game.board.board = [0,0,1,0,1,0,1,1,1,0,1,0,0,0,0,0,1,2,0,0,1,0,0,1,1,2,2,0,0,1,1,1,1,1,2,0,1,1,1,0,0,0,1,2,0,1,2,0,1,1,1,2,1,2,2,2,2,2,2,1,2,1,0,0,1,2,1,2,1,2,2,0,0,0,0,1,2,1,1,2,0]
+  // game.goScoringMode()
+
+  // game = new Game(9, 0, 0.5)
+  // game.board.board = [0,2,0,0,2,2,1,0,0,0,1,2,0,2,1,1,0,0,0,1,2,0,2,2,1,0,0,0,1,1,2,2,1,1,2,0,0,2,2,1,1,0,1,0,0,0,2,1,1,2,2,1,2,0,0,1,2,2,1,1,1,0,0,0,2,0,2,2,1,0,0,0,0,0,0,2,1,1,0,0,0]
   // game.goScoringMode()
 
   resetGameFromSettings()
