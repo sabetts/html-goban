@@ -314,12 +314,16 @@
               }
           }
 
-          console.log('counted', liberties)
+          // console.log('counted', liberties)
           return {ok: true, liberties: liberties, color: originPiece, group: group}
       }
 
-      // Return the coordinates of each
-      collectGroup(startX, startY) {
+      // Return the coordinates of each stone in the scoring
+      // group. Note that unconnected stones might be in the same
+      // scoring group if they are connect through empty spaces. This
+      // way the user can mark a group as dead and any other stones of
+      // the same color in the region will also be marked as dead.
+      collectScoringGroup(startX, startY) {
           let group = []
           let seen = []
           let toCheck = []
@@ -339,9 +343,9 @@
           while (toCheck.length > 0) {
               const [x, y] = toCheck.pop()
               const piece = this.board[this.idx(x,y)]
-              if (piece === startPiece) {
+              if (piece === startPiece || piece === EMPTY || piece === KO) {
                   // It's part of the group.
-                  group.push([x,y])
+                  if (piece === startPiece) group.push([x,y])
                   maybeAddIntersection(x,y-1)
                   maybeAddIntersection(x,y+1)
                   maybeAddIntersection(x-1,y)
@@ -356,6 +360,8 @@
       collectRegion(startX, startY, groupStatus) {
           let seen = []
           let region = []
+          let regionTouchesWhite = false
+          let regionTouchesBlack = false
           let toCheck = []
           let maybeAddIntersection = (x,y) => {
               if (x < 0 || x >= this.size) return
@@ -365,7 +371,7 @@
               seen.push([x,y])
           }
           const startPiece = this.pieceAt(startX, startY)
-          if (startPiece === undefined || startPiece === WHITE || startPiece === BLACK) return []
+          if (startPiece === undefined || startPiece === WHITE || startPiece === BLACK) return [[], UNCERTAIN]
 
           maybeAddIntersection(startX,startY)
           while(toCheck.length > 0) {
@@ -373,22 +379,25 @@
               const idx = this.idx(x,y)
               const status = groupStatus[idx]
               const piece = status === DEAD ? EMPTY : this.board[idx]
-              region.push([x,y])
-              // Expand the region until you reach a stone that is a
-              // different color from the stone at the current intersection.
+              // Expand the region until you reach a stone.
               if (piece === EMPTY || piece === KO) {
+                  region.push([x,y])
                   maybeAddIntersection(x,y-1)
                   maybeAddIntersection(x,y+1)
                   maybeAddIntersection(x-1,y)
                   maybeAddIntersection(x+1,y)
-              } else if (piece === BLACK || piece === WHITE) {
-                  if (this.pieceAt(x,y-1) === piece) maybeAddIntersection(x,y-1)
-                  if (this.pieceAt(x,y+1) === piece) maybeAddIntersection(x,y+1)
-                  if (this.pieceAt(x-1,y) === piece) maybeAddIntersection(x-1,y)
-                  if (this.pieceAt(x+1,y) === piece) maybeAddIntersection(x+1,y)
+              } else if (piece === BLACK) {
+                  regionTouchesBlack = true
+              } else if (piece === WHITE) {
+                  regionTouchesWhite = true
               }
           }
-          return region
+          let owner
+          if (regionTouchesWhite && regionTouchesBlack) owner = UNCERTAIN
+          else if (regionTouchesBlack) owner = BLACK
+          else if (regionTouchesWhite) owner = WHITE
+
+          return [region, owner]
       }
 
       captureGroup(group) {
@@ -399,7 +408,7 @@
           for (let [gx,gy] of group) {
               const i = this.idx(gx,gy)
               this.board[i] = EMPTY
-              console.log('cap', color, gx, gy, i)
+              // console.log('cap', color, gx, gy, i)
           }
           this.captures[opposite] += group.length
       }
@@ -447,9 +456,9 @@
           for (let [px,py] of [[x, y+1],[x, y-1],[x+1, y],[x-1, y]]) {
               if (newBoard.pieceAt(px,py) == opposite) {
                   const {ok, liberties, color, group} = newBoard.countLiberties(px,py)
-                  console.log('CAPTURE?', ok, px, py, liberties)
+                  // console.log('CAPTURE?', ok, px, py, liberties)
                   if (ok && liberties === 0) {
-                      console.log(JSON.stringify(group))
+                      // console.log(JSON.stringify(group))
                       newBoard.captureGroup(group)
                       captures = [...captures, ...group]
                   }
@@ -511,46 +520,21 @@
       }
 
       updateScoring() {
-          // Identify the regions
-          let seen = new Array(this.board.board.length).fill(false)
-          let regions = []
-          for (let x=0; x<this.board.size; x++) {
-              for (let y=0; y<this.board.size; y++) {
-                  if (seen[this.board.idx(x,y)]) continue
-                  const r = this.board.collectRegion(x, y, this.scoringGroupStatus)
-                  if (r.length === 0) continue
-                  r.forEach(([x,y]) => seen[this.board.idx(x,y)] = true)
-                  regions.push(r)
-              }
-          }
           // Recalculate ownership
           this.scoringOwnership.fill(-1)
-          for (let r of regions) {
-              // What is inside this region?
-              let count = {}
-              count[BLACK] = 0
-              count[WHITE] = 0
-              for (let [rx,ry] of r) {
-                  const piece = this.board.pieceAt(rx,ry)
-                  if (this.scoringGroupStatus[this.board.idx(rx,ry)] === DEAD) continue
-                  if (piece === BLACK || piece === WHITE) count[piece]++;
-              }
-              // Identify the region's owner and mark each
-              // intersection as such.
-              let regionOwner
-              if (count[BLACK] > 0 && count[WHITE] > 0) regionOwner = UNCERTAIN
-              else if (count[BLACK] > 0) regionOwner = BLACK
-              else if (count[WHITE] > 0) regionOwner = WHITE
-              else regionOwner = UNCERTAIN
-              for (let [rx,ry] of r) {
-                  this.scoringOwnership[this.board.idx(rx,ry)] = regionOwner
+          // Identify the regions and record the owner.
+          for (let x=0; x<this.board.size; x++) {
+              for (let y=0; y<this.board.size; y++) {
+                  if (this.scoringOwnership[this.board.idx(x,y)] !== -1) continue
+                  const [r,owner] = this.board.collectRegion(x, y, this.scoringGroupStatus)
+                  r.forEach(([x,y]) => this.scoringOwnership[this.board.idx(x,y)] = owner)
               }
           }
       }
 
       // Toggle the living status of the group of stones at x,y.
       scoringToggleGroupStatus(x, y) {
-          const group = this.board.collectGroup(x,y)
+          const group = this.board.collectScoringGroup(x,y)
           for (let [gx, gy] of group) {
               const idx = gy * this.board.size + gx
               if (this.scoringGroupStatus[idx] === ALIVE) this.scoringGroupStatus[idx] = DEAD
@@ -818,8 +802,8 @@
                   ctx.fillStyle = '#F00'
                   ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
               } else {
-                  ctx.fillStyle = '#0FF'
-                  ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
+                  // ctx.fillStyle = '#0FF'
+                  // ctx.fillRect(xofs + x * ofs-scoreSize/2, yofs + y * ofs-scoreSize/2, scoreSize, scoreSize)
               }
           }
       }
@@ -923,7 +907,7 @@
       const canvasWidth = canvas.width
       const canvasHeight = canvas.height
 
-      console.log('sb', sw, sh)
+      // console.log('sb', sw, sh)
 
       let size, canvasX, canvasY, sidebarX, sidebarY
       if (window.innerWidth > window.innerHeight) {
@@ -998,28 +982,32 @@
       const x = Math.round((mx - xofs) / ofs)
       const y = Math.round((my - yofs) / ofs)
 
-      console.log(x,y)
+      // console.log(x,y)
 
       if (game.state === GAME_SCORING) {
           game.scoringToggleGroupStatus(x,y)
       } else if (game.state === GAME_PLAYING) {
           const ret = game.playAt(x, y)
-          console.log(ret)
+          // console.log(ret)
       }
       drawGoban(canvas, ctx, game)
 
-      console.log('turn', game.turn)
+      // console.log('turn', game.turn)
   })
 
-  // A finished game for testing scoring.
+  // Finished game used for testing/debugging scoring.
   // game = new Game(9, 0, 0.5)
   // game.board.board = [0,0,0,0,2,2,1,0,0,0,0,0,2,2,1,0,0,0,2,2,2,2,1,0,1,1,0,1,2,1,1,1,1,2,1,1,1,2,1,0,1,2,2,2,1,1,1,0,1,2,0,0,1,2,0,0,1,2,2,0,2,1,2,0,0,1,1,2,0,2,1,2,0,0,0,1,1,2,2,2,2]
+  // game.goScoringMode()
+
+  // game = new Game(9, 0, 0.5)
+  // game.board.board = [0,0,1,0,1,0,1,1,1,0,1,0,0,0,0,0,1,2,0,0,1,0,0,1,1,2,2,0,0,1,1,1,1,1,2,0,1,1,1,0,0,0,1,2,0,1,2,0,1,1,1,2,1,2,2,2,2,2,2,1,2,1,0,0,1,2,1,2,1,2,2,0,0,0,0,1,2,1,1,2,0]
   // game.goScoringMode()
 
   resetGameFromSettings()
   resizeCanvas()
   drawGoban(canvas, ctx, game)
-  console.log('canvas', canvas.width, canvas.height)
+  // console.log('canvas', canvas.width, canvas.height)
 
 </script>
 </body>
