@@ -497,6 +497,7 @@
           } else {
               this.history.push(this.board)
               this.board = this.board.copy()
+              this.board.clearKo()
               this.board.lastMove = 'pass'
               this.turn = this.oppositeTurn()
           }
